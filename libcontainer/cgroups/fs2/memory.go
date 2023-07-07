@@ -112,6 +112,11 @@ func statMemory(dirPath string, stats *cgroups.Stats) error {
 		return err
 	}
 	stats.MemoryStats.Usage = memoryUsage
+	// cgroup v1 `usage_in_bytes` reports memory usage as rss (NR_ANON_MAPPED) + cache (NR_FILE_PAGES).
+	// cgroup v2 reports the same values as anon and file.
+	// sum those to report the same value as `usage_in_bytes` in v1 for consistency.
+	stats.MemoryStats.Usage.Usage = stats.MemoryStats.Stats["anon"] + stats.MemoryStats.Stats["file"]
+
 	swapUsage, err := getMemoryDataV2(dirPath, "swap")
 	if err != nil {
 		return err
@@ -172,13 +177,11 @@ func statsFromMeminfo(stats *cgroups.Stats) error {
 		swap_free  uint64
 		swap_total uint64
 		main_total uint64
-		main_free  uint64
 	)
 	mem := map[string]*uint64{
 		"SwapFree":  &swap_free,
 		"SwapTotal": &swap_total,
 		"MemTotal":  &main_total,
-		"MemFree":   &main_free,
 	}
 
 	found := 0
@@ -213,8 +216,6 @@ func statsFromMeminfo(stats *cgroups.Stats) error {
 
 	stats.MemoryStats.SwapUsage.Usage = (swap_total - swap_free) * 1024
 	stats.MemoryStats.SwapUsage.Limit = math.MaxUint64
-
-	stats.MemoryStats.Usage.Usage = (main_total - main_free) * 1024
 	stats.MemoryStats.Usage.Limit = math.MaxUint64
 
 	return nil
